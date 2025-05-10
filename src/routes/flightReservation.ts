@@ -1,20 +1,15 @@
-import { Hono } from "hono";
-import { FlightReservationService } from "../services/flightReservation.service";
+import { Hono } from 'hono';
+import { FlightReservationService } from '../services/flightReservation.service';
 
 const flightReservation = new Hono<{ Bindings: CloudflareBindings }>();
 
 // 機能的には、フライトの検索、航空券の予約、座席指定を持たせたい
 
 // フライト全般の検索
-flightReservation.post("/search", async (c) => {
-  const { departureAirport, arrivalAirport, departureDate } =
-    await c.req.json();
+flightReservation.post('/search', async (c) => {
+  const { departureAirport, arrivalAirport, departureDate } = await c.req.json();
   const flightReservationService = new FlightReservationService(c.env.DB);
-  const flights = await flightReservationService.searchFlights(
-    departureAirport,
-    arrivalAirport,
-    departureDate
-  );
+  const flights = await flightReservationService.searchFlights(departureAirport, arrivalAirport, departureDate);
   return c.json(flights);
 });
 
