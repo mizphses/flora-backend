@@ -365,6 +365,7 @@ erDiagram
   String marketingAirlineCode "nullable"
   String pnrId FK "nullable"
   String pnrHistoryItemId FK,UK "nullable"
+  String operationalFlightId FK "nullable"
 }
 "CheckInInfo" {
   String id PK
@@ -511,6 +512,106 @@ erDiagram
   DateTime expiresAt
   String crewIdentityId FK
 }
+"AircraftType" {
+  String id PK
+  String typeCode UK
+  String typeName
+  String manufacturer "nullable"
+  DateTime createdAt
+  DateTime updatedAt
+}
+"Aircraft" {
+  String id PK
+  String registrationNumber UK
+  String aircraftTypeId FK
+  String airlineOwnerId FK "nullable"
+  String seatLayoutTemplateId FK "nullable"
+  String status "nullable"
+  DateTime createdAt
+  DateTime updatedAt
+}
+"SeatLayoutTemplate" {
+  String id PK
+  String name
+  String aircraftTypeId FK
+  String description "nullable"
+  Int totalSeats
+  DateTime createdAt
+  DateTime updatedAt
+}
+"SeatDefinition" {
+  String id PK
+  String seatLayoutTemplateId FK
+  String seatNumber
+  CabinClass cabinClass
+  SeatCharacteristic seatCharacteristic "nullable"
+  Int xPosition "nullable"
+  Int yPosition "nullable"
+  Json features "nullable"
+  Boolean isReservable
+  String remarks "nullable"
+}
+"FlightSchedule" {
+  String id PK
+  String flightNumber
+  String marketingAirlineId FK
+  String operatingAirlineId FK "nullable"
+  String departureAirportId FK
+  String arrivalAirportId FK
+  String standardDepartureTime
+  String standardArrivalTime
+  Int durationMinutes "nullable"
+  Json daysOfWeek
+  String defaultAircraftTypeId FK "nullable"
+  DateTime effectiveStartDate
+  DateTime effectiveEndDate "nullable"
+  String remarks "nullable"
+  DateTime createdAt
+  DateTime updatedAt
+}
+"OperationalFlight" {
+  String id PK
+  String flightScheduleId FK "nullable"
+  String flightNumber
+  String marketingAirlineId FK
+  String operatingAirlineId FK "nullable"
+  String departureAirportId FK
+  String arrivalAirportId FK
+  DateTime scheduledDepartureDateTime
+  DateTime scheduledArrivalDateTime
+  DateTime estimatedDepartureDateTime "nullable"
+  DateTime estimatedArrivalDateTime "nullable"
+  DateTime actualDepartureDateTime "nullable"
+  DateTime actualArrivalDateTime "nullable"
+  String aircraftId FK "nullable"
+  String aircraftTypeId FK "nullable"
+  String seatLayoutTemplateId FK "nullable"
+  FlightStatus status
+  String gate "nullable"
+  String terminal "nullable"
+  String remarks "nullable"
+  DateTime checkInStartTime "nullable"
+  DateTime checkInEndTime "nullable"
+  DateTime boardingStartTime "nullable"
+  DateTime createdAt
+  DateTime updatedAt
+}
+"SeatReservation" {
+  String id PK
+  String pnrId FK
+  String passengerId FK
+  String operationalFlightId FK
+  String aircraftId FK
+  String seatNumber
+  CabinClass cabinClass
+  SeatReservationStatus status
+  DateTime reservationDateTime
+  DateTime lastUpdatedAt
+  Decimal price "nullable"
+  String currency "nullable"
+  String segmentRef "nullable"
+  String remarks "nullable"
+}
 "Originator" |o--|| "PNRGOVMessage" : pnrGovMessage
 "FlightLeg" }o--o| "AirportInfo" : departureAirport
 "FlightLeg" }o--o| "AirportInfo" : arrivalAirport
@@ -564,6 +665,7 @@ erDiagram
 "PnrHistoryCredit" }o--|| "StructuredPnrHistory" : structuredPnrHistory
 "FlightSegment" }o--o| "PNR" : pnr
 "FlightSegment" |o--o| "PnrHistoryItem" : pnrHistoryItem
+"FlightSegment" }o--o| "OperationalFlight" : operationalFlight
 "CheckInInfo" }o--|| "FlightSegment" : flightSegment
 "BoardingNumberInfo" }o--|| "CheckInInfo" : checkInInfo
 "SeatNumber" |o--|| "BoardingNumberInfo" : boardingNumberInfo
@@ -586,6 +688,28 @@ erDiagram
 "FlightLegsRecord" }o--|| "BoardingPassRecord" : boardingPassRecord
 "FlightLegsRecord" }o--|| "FlightSegment" : flightSegment
 "refreshToken" }o--|| "CrewIdentity" : crewIdentity
+"Aircraft" }o--|| "AircraftType" : aircraftType
+"Aircraft" }o--o| "Company" : airlineOwner
+"Aircraft" }o--o| "SeatLayoutTemplate" : seatLayoutTemplate
+"SeatLayoutTemplate" }o--|| "AircraftType" : aircraftType
+"SeatDefinition" }o--|| "SeatLayoutTemplate" : seatLayoutTemplate
+"FlightSchedule" }o--|| "Company" : marketingAirline
+"FlightSchedule" }o--o| "Company" : operatingAirline
+"FlightSchedule" }o--|| "AirportInfo" : departureAirport
+"FlightSchedule" }o--|| "AirportInfo" : arrivalAirport
+"FlightSchedule" }o--o| "AircraftType" : defaultAircraftType
+"OperationalFlight" }o--o| "FlightSchedule" : flightSchedule
+"OperationalFlight" }o--|| "Company" : marketingAirline
+"OperationalFlight" }o--o| "Company" : operatingAirline
+"OperationalFlight" }o--|| "AirportInfo" : departureAirport
+"OperationalFlight" }o--|| "AirportInfo" : arrivalAirport
+"OperationalFlight" }o--o| "Aircraft" : assignedAircraft
+"OperationalFlight" }o--o| "AircraftType" : assignedAircraftType
+"OperationalFlight" }o--o| "SeatLayoutTemplate" : seatLayoutTemplate
+"SeatReservation" }o--|| "PNR" : pnr
+"SeatReservation" }o--|| "Passenger" : passenger
+"SeatReservation" }o--|| "OperationalFlight" : operationalFlight
+"SeatReservation" }o--|| "Aircraft" : aircraft
 ```
 
 ### `CrewIdentity`
@@ -1021,6 +1145,7 @@ erDiagram
   - `marketingAirlineCode`: 
   - `pnrId`: 
   - `pnrHistoryItemId`: 
+  - `operationalFlightId`: 
 
 ### `CheckInInfo`
 
@@ -1196,3 +1321,117 @@ erDiagram
   - `token`: 
   - `expiresAt`: 
   - `crewIdentityId`: 
+
+### `AircraftType`
+
+**Properties**
+  - `id`: 
+  - `typeCode`: 
+  - `typeName`: 
+  - `manufacturer`: 
+  - `createdAt`: 
+  - `updatedAt`: 
+
+### `Aircraft`
+
+**Properties**
+  - `id`: 
+  - `registrationNumber`: 
+  - `aircraftTypeId`: 
+  - `airlineOwnerId`: 
+  - `seatLayoutTemplateId`: 
+  - `status`: 
+  - `createdAt`: 
+  - `updatedAt`: 
+
+### `SeatLayoutTemplate`
+
+**Properties**
+  - `id`: 
+  - `name`: 
+  - `aircraftTypeId`: 
+  - `description`: 
+  - `totalSeats`: 
+  - `createdAt`: 
+  - `updatedAt`: 
+
+### `SeatDefinition`
+
+**Properties**
+  - `id`: 
+  - `seatLayoutTemplateId`: 
+  - `seatNumber`: 
+  - `cabinClass`: 
+  - `seatCharacteristic`: 
+  - `xPosition`: 
+  - `yPosition`: 
+  - `features`: 
+  - `isReservable`: 
+  - `remarks`: 
+
+### `FlightSchedule`
+
+**Properties**
+  - `id`: 
+  - `flightNumber`: 
+  - `marketingAirlineId`: 
+  - `operatingAirlineId`: 
+  - `departureAirportId`: 
+  - `arrivalAirportId`: 
+  - `standardDepartureTime`: 
+  - `standardArrivalTime`: 
+  - `durationMinutes`: 
+  - `daysOfWeek`: 
+  - `defaultAircraftTypeId`: 
+  - `effectiveStartDate`: 
+  - `effectiveEndDate`: 
+  - `remarks`: 
+  - `createdAt`: 
+  - `updatedAt`: 
+
+### `OperationalFlight`
+
+**Properties**
+  - `id`: 
+  - `flightScheduleId`: 
+  - `flightNumber`: 
+  - `marketingAirlineId`: 
+  - `operatingAirlineId`: 
+  - `departureAirportId`: 
+  - `arrivalAirportId`: 
+  - `scheduledDepartureDateTime`: 
+  - `scheduledArrivalDateTime`: 
+  - `estimatedDepartureDateTime`: 
+  - `estimatedArrivalDateTime`: 
+  - `actualDepartureDateTime`: 
+  - `actualArrivalDateTime`: 
+  - `aircraftId`: 
+  - `aircraftTypeId`: 
+  - `seatLayoutTemplateId`: 
+  - `status`: 
+  - `gate`: 
+  - `terminal`: 
+  - `remarks`: 
+  - `checkInStartTime`: 
+  - `checkInEndTime`: 
+  - `boardingStartTime`: 
+  - `createdAt`: 
+  - `updatedAt`: 
+
+### `SeatReservation`
+
+**Properties**
+  - `id`: 
+  - `pnrId`: 
+  - `passengerId`: 
+  - `operationalFlightId`: 
+  - `aircraftId`: 
+  - `seatNumber`: 
+  - `cabinClass`: 
+  - `status`: 
+  - `reservationDateTime`: 
+  - `lastUpdatedAt`: 
+  - `price`: 
+  - `currency`: 
+  - `segmentRef`: 
+  - `remarks`: 

@@ -129,6 +129,12 @@ model AirportInfo {
   otherTravelEnd     OtherTravelSegment[] @relation("EndLocation")
   seatInfoDepartures SeatInfo[]           @relation("SeatDepartureAirport")
   seatInfoArrivals   SeatInfo[]           @relation("SeatArrivalAirport")
+  
+  // 新しいリレーションフィールド
+  departureFlightSchedules    FlightSchedule[]      @relation("DepartureFlightSchedules")
+  arrivalFlightSchedules      FlightSchedule[]      @relation("ArrivalFlightSchedules")
+  departureOperationalFlights OperationalFlight[]   @relation("DepartureOperationalFlights")
+  arrivalOperationalFlights   OperationalFlight[]   @relation("ArrivalOperationalFlights")
 }
 
 model OperatingAirlineInfo {
@@ -189,6 +195,9 @@ model PNR {
   structuredPnrHistories StructuredPnrHistory[]
   unstructuredPnrHistory String?
   boardingPassRecords    BoardingPassRecord[] // PNRは複数の搭乗券記録を持つ可能性がある (乗客ごとなど)
+  
+  // 座席予約リレーション
+  seatReservations       SeatReservation[]
 }
 
 model UniqueId {
@@ -216,6 +225,13 @@ model Company {
   osiAirlines       OSIItem[]          @relation("OSIAirline")
   docSsrFlightInfos DocFlightInfo[]    @relation("DocSSRAirline")
   pnrHistoryCredits PnrHistoryCredit[] @relation("PnrHistoryCreditCompany")
+  
+  // 新しいリレーションフィールド
+  ownedAircrafts            Aircraft[]            @relation("OwnedAircrafts")
+  marketingFlightSchedules    FlightSchedule[]      @relation("MarketingFlightSchedules")
+  operatingFlightSchedules    FlightSchedule[]      @relation("OperatingFlightSchedules")
+  marketingOperationalFlights OperationalFlight[]   @relation("MarketingOperationalFlights")
+  operatingOperationalFlights OperationalFlight[]   @relation("OperatingOperationalFlights")
 }
 
 model BookingRef {
@@ -363,6 +379,9 @@ model Passenger {
   pnrHistoryItemId        String?               @unique
   pnrHistoryItem          PnrHistoryItem?       @relation(fields: [pnrHistoryItemId], references: [id])
   boardingPassRecord      BoardingPassRecord? // 乗客は1つの搭乗券記録を持つ (または持たない)
+  
+  // 座席予約リレーション
+  seatReservations        SeatReservation[]
 }
 
 model PassengerMiddleName {
@@ -560,6 +579,10 @@ model FlightSegment {
   pnrHistoryItemId                 String?            @unique
   pnrHistoryItem                   PnrHistoryItem?    @relation(fields: [pnrHistoryItemId], references: [id])
   boardingPassLegs                 FlightLegsRecord[] // このフライト区間に関連する搭乗券区間情報
+  
+  // 運航便とのリレーション
+  operationalFlightId              String?
+  operationalFlight                OperationalFlight? @relation("OperationalFlightForSegments", fields: [operationalFlightId], references: [id])
 }
 
 model CheckInInfo {
@@ -763,4 +786,233 @@ model refreshToken {
   expiresAt      DateTime
   crewIdentityId String
   crewIdentity   CrewIdentity @relation(fields: [crewIdentityId], references: [id])
+}
+
+model AircraftType {
+  id                  String                @id @default(cuid())
+  typeCode            String                @unique // 例: "B738", "A32N" (IATAコードなど)
+  typeName            String                // 例: "Boeing 737-800", "Airbus A320neo"
+  manufacturer        String?               // 製造会社
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  aircrafts           Aircraft[]            // この型式の個別機材リスト
+  seatLayoutTemplates SeatLayoutTemplate[]  // この型式で利用可能な座席レイアウトテンプレート
+  flightSchedules     FlightSchedule[]      @relation("DefaultAircraftTypeForSchedule") // スケジュールでのデフォルト機材型
+  operationalFlights  OperationalFlight[]   @relation("AssignedAircraftTypeForFlight") // 運航便に割り当てられた機材型(機材未定時)
+}
+
+// 個別の機材 (例: 登録番号 JA897A)
+model Aircraft {
+  id                  String                @id @default(cuid())
+  registrationNumber  String                @unique // 機体登録番号
+  aircraftTypeId      String
+  aircraftType        AircraftType          @relation(fields: [aircraftTypeId], references: [id])
+  airlineOwnerId      String?               // 所有航空会社 (既存のCompany.idを参照)
+  airlineOwner        Company?              @relation("OwnedAircrafts", fields: [airlineOwnerId], references: [id])
+  seatLayoutTemplateId String?              // この機体に適用される特定のシートレイアウト (なければ型式のデフォルトなど)
+  seatLayoutTemplate  SeatLayoutTemplate?   @relation(fields: [seatLayoutTemplateId], references: [id])
+  status              String?               // "Active", "Maintenance", "Retired"
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  operationalFlights  OperationalFlight[]   @relation("AssignedAircraft") // この機材が割り当てられた運航便
+  seatReservations    SeatReservation[]     // この機材の座席に対する予約 (直接紐づけ)
+}
+
+// 座席レイアウトテンプレート
+model SeatLayoutTemplate {
+  id                  String                @id @default(cuid())
+  name                String                // 例: "B738 国内線標準(166席)", "A320 国際線C12Y138(150席)"
+  aircraftTypeId      String                // どの機材型式向けか
+  aircraftType        AircraftType          @relation(fields: [aircraftTypeId], references: [id])
+  description         String?
+  totalSeats          Int                   // このレイアウトの総座席数
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  seatDefinitions     SeatDefinition[]      // このレイアウトに含まれる座席定義
+  aircrafts           Aircraft[]            // このレイアウトを直接使用する機体
+  operationalFlights  OperationalFlight[]   @relation("FlightSeatLayout") // このレイアウトを使用する運航便
+}
+
+// 座席定義 (レイアウト内の個々の座席)
+model SeatDefinition {
+  id                    String              @id @default(cuid())
+  seatLayoutTemplateId  String
+  seatLayoutTemplate    SeatLayoutTemplate  @relation(fields: [seatLayoutTemplateId], references: [id], onDelete: Cascade)
+  seatNumber            String              // 座席番号 (例: "1A", "23F")
+  cabinClass            CabinClass          // Enum: ECONOMY, BUSINESS など
+  seatCharacteristic    SeatCharacteristic? // Enum: WINDOW, AISLE, EXIT_ROW など
+  xPosition             Int?                // 座席マップ表示用のX座標 (オプション)
+  yPosition             Int?                // 座席マップ表示用のY座標 (オプション)
+  features              Json?               // 座席の特性 (例: { "power": true, "legroom": "extra" })
+  isReservable          Boolean             @default(true) // 予約可能か (メンテナンス用座席など)
+  remarks               String?
+
+  @@unique([seatLayoutTemplateId, seatNumber]) // 同一レイアウト内で座席番号はユニーク
+}
+
+// --- 2. 便名・運航関連 ---
+
+// 定期便スケジュール (例: NH123便 月水金 10:00発)
+model FlightSchedule {
+  id                    String        @id @default(cuid())
+  flightNumber          String        // 便名 (例: "NH123")
+  marketingAirlineId    String        // マーケティング航空会社 (既存のCompany.id)
+  marketingAirline      Company       @relation("MarketingFlightSchedules", fields: [marketingAirlineId], references: [id])
+  operatingAirlineId    String?       // 実運航航空会社 (既存のCompany.id, コードシェアなどで異なる場合)
+  operatingAirline      Company?      @relation("OperatingFlightSchedules", fields: [operatingAirlineId], references: [id])
+  departureAirportId    String        // 出発空港 (既存のAirportInfo.id)
+  departureAirport      AirportInfo   @relation("DepartureFlightSchedules", fields: [departureAirportId], references: [id])
+  arrivalAirportId      String        // 到着空港 (既存のAirportInfo.id)
+  arrivalAirport        AirportInfo   @relation("ArrivalFlightSchedules", fields: [arrivalAirportId], references: [id])
+  standardDepartureTime String        // 標準出発時刻 "HH:MM" (タイムゾーンは運用で定義)
+  standardArrivalTime   String        // 標準到着時刻 "HH:MM"
+  durationMinutes       Int?          // 標準飛行時間 (分)
+  daysOfWeek            Json          // 運航曜日 (例: ["MON", "WED", "FRI"] or ビットマスク)
+  defaultAircraftTypeId String?       // このスケジュールで通常使用される機材型式
+  defaultAircraftType   AircraftType? @relation("DefaultAircraftTypeForSchedule", fields: [defaultAircraftTypeId], references: [id])
+  effectiveStartDate    DateTime      // スケジュール有効開始日 (日付のみ)
+  effectiveEndDate      DateTime?     // スケジュール有効終了日 (日付のみ)
+  remarks               String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  operationalFlights    OperationalFlight[] // このスケジュールから生成される運航便インスタンス
+
+  // 同一航空会社・便名・出発空港で、有効期間が重複しないようにする
+  @@unique([marketingAirlineId, flightNumber, departureAirportId, effectiveStartDate])
+}
+
+// 運航便インスタンス (例: 2024-08-15のNH123便)
+model OperationalFlight {
+  id                          String                @id @default(cuid())
+  flightScheduleId            String?               // どの定期便スケジュールに基づくか (不定期便の場合はNULL)
+  flightSchedule              FlightSchedule?       @relation(fields: [flightScheduleId], references: [id])
+  flightNumber                String                // 便名 (スケジュールからコピー、または不定期便で直接入力)
+  marketingAirlineId          String                // マーケティング航空会社
+  marketingAirline            Company               @relation("MarketingOperationalFlights", fields: [marketingAirlineId], references: [id])
+  operatingAirlineId          String?               // 実運航航空会社
+  operatingAirline            Company?              @relation("OperatingOperationalFlights", fields: [operatingAirlineId], references: [id])
+  departureAirportId          String                // 出発空港
+  departureAirport            AirportInfo           @relation("DepartureOperationalFlights", fields: [departureAirportId], references: [id])
+  arrivalAirportId            String                // 到着空港
+  arrivalAirport              AirportInfo           @relation("ArrivalOperationalFlights", fields: [arrivalAirportId], references: [id])
+  
+  scheduledDepartureDateTime  DateTime              // 予定出発日時 (UTC推奨)
+  scheduledArrivalDateTime    DateTime              // 予定到着日時 (UTC推奨)
+  estimatedDepartureDateTime  DateTime?             // 見込み出発日時 (遅延など考慮)
+  estimatedArrivalDateTime    DateTime?             // 見込み到着日時
+  actualDepartureDateTime     DateTime?             // 実績出発日時
+  actualArrivalDateTime       DateTime?             // 実績到着日時
+  
+  aircraftId                  String?               // 割り当てられた機材 (Aircraft.id)
+  assignedAircraft            Aircraft?             @relation("AssignedAircraft", fields: [aircraftId], references: [id])
+  aircraftTypeId              String?               // 使用機材型式 (機材未定時やAircraftレコードがない場合)
+  assignedAircraftType        AircraftType?         @relation("AssignedAircraftTypeForFlight", fields: [aircraftTypeId], references: [id])
+  
+  seatLayoutTemplateId        String?               // このフライトで使用する座席レイアウト (通常はassignedAircraftから決定)
+  seatLayoutTemplate          SeatLayoutTemplate?   @relation("FlightSeatLayout", fields: [seatLayoutTemplateId], references: [id])
+
+  status                      FlightStatus          // Enum: SCHEDULED, DELAYED, CANCELLED, BOARDING など
+  gate                        String?               // 搭乗ゲート
+  terminal                    String?               // ターミナル
+  remarks                     String?
+  checkInStartTime            DateTime?             // チェックイン開始時刻
+  checkInEndTime              DateTime?             // チェックイン締切時刻
+  boardingStartTime           DateTime?             // 搭乗開始時刻
+  
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+
+  flightSegments              FlightSegment[]       @relation("OperationalFlightForSegments") // PNR内のフライト区間との関連
+  seatReservations            SeatReservation[]     // この運航便への座席予約
+
+  // 特定のマーケティング航空会社の便名、出発日時、出発空港で運航便はユニーク
+  @@unique([marketingAirlineId, flightNumber, scheduledDepartureDateTime, departureAirportId])
+}
+
+// --- 3. 座席予約 ---
+
+model SeatReservation {
+  id                  String            @id @default(cuid())
+  pnrId               String            // 関連するPNR (PNR.id)
+  pnr                 PNR               @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+  passengerId         String            // 関連する乗客 (Passenger.id)
+  passenger           Passenger         @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  operationalFlightId String            // どの運航便か (OperationalFlight.id)
+  operationalFlight   OperationalFlight @relation(fields: [operationalFlightId], references: [id], onDelete:Cascade)
+  
+  // 予約された座席情報
+  // 運航便に割り当てられた機材 (aircraftId) とその座席番号 (seatNumber) で特定
+  // seatNumberは、OperationalFlight.seatLayoutTemplate に含まれる SeatDefinition.seatNumber と対応
+  aircraftId          String            // どの機材の座席か (OperationalFlight.aircraftId と一致するべき)
+  aircraft            Aircraft          @relation(fields: [aircraftId], references: [id])
+  seatNumber          String            // 座席番号 (例: "1A")
+  cabinClass          CabinClass        // 予約時のキャビンクラス（座席指定時に SeatDefinition から取得）
+
+  status              SeatReservationStatus // Enum: CONFIRMED, WAITLISTED, CANCELLED など
+  reservationDateTime DateTime          @default(now()) // 予約日時
+  lastUpdatedAt       DateTime          @updatedAt
+  price               Decimal?          // 座席指定料金 (あれば)
+  currency            String?           // 料金の通貨コード
+  segmentRef          String?           // PNR内の関連セグメント参照ID (RPHなど、オプション)
+  remarks             String?
+
+  // 同一運航便で、一人の乗客は一つの座席のみ予約可能
+  @@unique([operationalFlightId, passengerId])
+  // 同一運航便の同一機材の同一座席は、有効な予約は一つのみ (キャンセル済みなどは除く。DBレベルの制約は注意)
+  // @@unique([operationalFlightId, aircraftId, seatNumber, status]) // statusもキーに含めるか要検討
+  @@index([pnrId, passengerId])
+  @@index([operationalFlightId, seatNumber])
+}
+
+
+// --- Enums ---
+
+enum CabinClass {
+  FIRST
+  BUSINESS
+  PREMIUM_ECONOMY
+  ECONOMY
+  UNKNOWN // 他システム連携などでクラス不明の場合
+}
+
+enum SeatCharacteristic {
+  WINDOW
+  AISLE
+  MIDDLE
+  EXIT_ROW
+  BULKHEAD
+  UPPER_DECK
+  LOWER_DECK
+  NO_SEAT // SSRなどで座席確保なしを示す場合
+  OTHER
+}
+
+enum FlightStatus {
+  SCHEDULED        // 予定通り
+  ON_TIME          // 定刻（運航中フェーズ）
+  DELAYED          // 遅延
+  CANCELLED        // 欠航
+  BOARDING         // 搭乗中
+  GATE_CLOSED      // 搭乗締切
+  DEPARTED         // 出発済み
+  IN_FLIGHT        // 飛行中
+  ARRIVED          // 到着済み
+  DIVERTED         // 行先変更
+  UNKNOWN          // 不明
+}
+
+enum SeatReservationStatus {
+  REQUESTED           // リクエスト中 (確保のみ、未確定)
+  CONFIRMED           // 予約確定
+  WAITLISTED          // 空席待ち
+  CHECKED_IN          // チェックイン済み (この座席で搭乗予定)
+  BOARDED             // 搭乗済み
+  CANCELLED           // 予約キャンセル
+  NO_SHOW             // 未搭乗
+  BLOCKED             // 航空会社によりブロック (例: クルー用)
+  PENDING_PAYMENT     // 支払い待ち
 }
