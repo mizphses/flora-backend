@@ -19,7 +19,8 @@
     "gen": "run-p gen:*",
     "gen:cloudflare-types": "wrangler types --env-interface CloudflareBindings",
     "gen:prisma": "prisma generate",
-    "prepare": "husky"
+    "prepare:husky": "husky",
+    "prepare": "run-p prepare:* gen:prisma"
   },
   "dependencies": {
     "@biomejs/biome": "^1.9.4",
