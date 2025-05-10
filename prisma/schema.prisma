@@ -1,0 +1,766 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  output          = "../src/generated/prisma" // 出力先パスは環境に合わせて調整してください
+}
+
+datasource db {
+  provider  = "sqlite"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator markdown {
+  provider = "prisma-markdown"
+  output   = "../docs/ERD.md" // 出力先パスは環境に合わせて調整してください
+  title    = "DB Schema"
+}
+
+enum Role {
+  RSV_TKT_GENERAL
+  RSV_TKT_SUPERVISOR
+  RSV_TKT_LEADER
+  RSV_TKT_ADMIN
+  INVENTORY_ADMIN
+  INVENTORY_SEAT
+  INVENTORY_CODESHARE
+  INVENTORY_SYSAD
+  INVENTORY_GENERAL
+  SALES_GENERAL
+  SALES_SUPERVISOR
+  SALES_ADMIN
+  TERMINAL_ADMIN
+  TERMINAL_GENERAL
+  OTHER_GENERAL
+  OTHER_ADMIN
+  SYSTEM_ADMIN
+  SUPER_ADMIN
+}
+
+model CrewIdentity {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  password     String?
+  lastName     String?
+  firstName    String?
+  roles        Role
+  refreshToken refreshToken[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model PassengerUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  firstName String
+  lastName  String
+  password  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PNRGOVMessage {
+  id                      String    @id @default(cuid())
+  echoToken               String?
+  timeStamp               DateTime? // YYYY-MM-DDTHH:MM:SS
+  target                  String? // e.g., Production, Test
+  version                 String? // e.g., 1.000
+  transactionIdentifier   String?   @unique // Unique identifier for a transaction
+  sequenceNmbr            Int?
+  transactionStatusCode   String? // e.g., Start, End, InProgress
+  primaryLangID           String?
+  altLangID               String?
+  retransmissionIndicator Boolean?
+  correlationID           String?   @unique // End-to-end correlation
+  schemaVersion           String? // From xsi:schemaLocation, implicitly "IATA/2007/00"
+
+  originator    Originator?
+  flightLeg     FlightLeg?
+  pnrsContainer PNRsContainer?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Originator {
+  id                 String  @id @default(cuid())
+  airlineCode        String
+  systemCode         String
+  airlineContactInfo String?
+
+  pnrGovMessageId String        @unique
+  pnrGovMessage   PNRGOVMessage @relation(fields: [pnrGovMessageId], references: [id], onDelete: Cascade)
+}
+
+model FlightLeg {
+  id                String   @id @default(cuid())
+  carrierCode       String
+  flightNumber      String
+  departureDateTime DateTime
+  arrivalDateTime   DateTime
+  dateChangeNbr     String?
+  operationalSuffix String?
+
+  departureAirportId String?
+  departureAirport   AirportInfo? @relation("DepartureAirport", fields: [departureAirportId], references: [id])
+
+  arrivalAirportId String?
+  arrivalAirport   AirportInfo? @relation("ArrivalAirport", fields: [arrivalAirportId], references: [id])
+
+  operatingAirlineId String?
+  operatingAirline   OperatingAirlineInfo? @relation(fields: [operatingAirlineId], references: [id])
+
+  marketingAirlineId String?
+  marketingAirline   MarketingAirlineInfo? @relation(fields: [marketingAirlineId], references: [id])
+
+  equipments EquipmentInfo[]
+
+  pnrGovMessageId String        @unique
+  pnrGovMessage   PNRGOVMessage @relation(fields: [pnrGovMessageId], references: [id], onDelete: Cascade)
+}
+
+model AirportInfo {
+  id                 String               @id @default(cuid())
+  locationCode       String
+  codeContext        String?
+  departureFlights   FlightLeg[]          @relation("DepartureAirport")
+  arrivalFlights     FlightLeg[]          @relation("ArrivalAirport")
+  otherTravelStart   OtherTravelSegment[] @relation("StartLocation")
+  otherTravelEnd     OtherTravelSegment[] @relation("EndLocation")
+  seatInfoDepartures SeatInfo[]           @relation("SeatDepartureAirport")
+  seatInfoArrivals   SeatInfo[]           @relation("SeatArrivalAirport")
+}
+
+model OperatingAirlineInfo {
+  id               String      @id @default(cuid())
+  companyShortName String?
+  travelSector     String?
+  code             String
+  codeContext      String?
+  flightNumber     String?
+  resBookDesigCode String?
+  flightLeg        FlightLeg[]
+}
+
+model MarketingAirlineInfo {
+  id               String      @id @default(cuid())
+  companyShortName String?
+  travelSector     String?
+  code             String
+  codeContext      String?
+  flightLeg        FlightLeg[]
+}
+
+model EquipmentInfo {
+  id            String    @id @default(cuid())
+  airEquipType  String
+  changeOfGauge Boolean?
+  flightLegId   String
+  flightLeg     FlightLeg @relation(fields: [flightLegId], references: [id], onDelete: Cascade)
+}
+
+model PNRsContainer {
+  id              String        @id @default(cuid())
+  numberOfPnrs    Int
+  pnrGovMessageId String        @unique
+  pnrGovMessage   PNRGOVMessage @relation(fields: [pnrGovMessageId], references: [id], onDelete: Cascade)
+  pnrs            PNR[]
+}
+
+model PNR {
+  id                     String                 @id @default(cuid())
+  numberOfPassengers     Int
+  pnrTransDate           DateTime?
+  pnrCreationDate        DateTime?
+  lastTktDate            DateTime?
+  pnrsContainerId        String
+  pnrsContainer          PNRsContainer          @relation(fields: [pnrsContainerId], references: [id], onDelete: Cascade)
+  bookingRefs            BookingRef[]
+  pnrLevelSsrItems       SSRItem[]              @relation("PNRLevelSSR")
+  pnrLevelOsiItems       OSIItem[]              @relation("PNRLevelOSI")
+  pos                    POS?
+  contactInfos           ContactInformation[]   @relation("PNRContactInfo")
+  prepaidBags            PrepaidBag[]
+  passengers             Passenger[]
+  docSsrs                DocSSR[]               @relation("PNRDocSSR")
+  flights                FlightSegment[]        @relation("PNRFlights")
+  splitPnrs              SplitPNR[]
+  otherTravelSegments    OtherTravelSegment[]
+  structuredPnrHistories StructuredPnrHistory[]
+  unstructuredPnrHistory String?
+  boardingPassRecords    BoardingPassRecord[] // PNRは複数の搭乗券記録を持つ可能性がある (乗客ごとなど)
+}
+
+model UniqueId {
+  id                 String            @id @default(uuid())
+  url                String?
+  type               String?
+  companyId          String?
+  company            Company?          @relation(fields: [companyId], references: [id])
+  bookingRefId       String?           @unique
+  bookingRef         BookingRef?
+  requestorId        String?           @unique
+  source             POSSource?
+  pnrHistoryCreditId String?           @unique
+  pnrHistoryCredit   PnrHistoryCredit?
+}
+
+model Company {
+  id                String             @id @default(cuid())
+  companyShortName  String?
+  travelSector      String?
+  code              String
+  codeContext       String?
+  uniqueIds         UniqueId[]
+  ssrAirlines       SSRItem[]          @relation("SSRAirline")
+  osiAirlines       OSIItem[]          @relation("OSIAirline")
+  docSsrFlightInfos DocFlightInfo[]    @relation("DocSSRAirline")
+  pnrHistoryCredits PnrHistoryCredit[] @relation("PnrHistoryCreditCompany")
+}
+
+model BookingRef {
+  id                String         @id @default(cuid())
+  uniqueIdDetailsId String         @unique
+  uniqueIdDetails   UniqueId       @relation(fields: [uniqueIdDetailsId], references: [id], onDelete: Cascade)
+  pnrId             String?
+  pnr               PNR?           @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+  flightSegmentId   String?
+  flightSegment     FlightSegment? @relation(fields: [flightSegmentId], references: [id], onDelete: Cascade)
+}
+
+model SSRItem {
+  id               String          @id @default(cuid())
+  ssrCode          String
+  serviceQuantity  Int?
+  status           String?
+  boardPoint       String?
+  offPoint         String?
+  rph              String?
+  surnameRefNumber String?
+  text             String?
+  airlineId        String?
+  airline          Company?        @relation("SSRAirline", fields: [airlineId], references: [id])
+  pnrId            String?
+  pnr              PNR?            @relation("PNRLevelSSR", fields: [pnrId], references: [id], onDelete: Cascade)
+  passengerId      String?
+  passenger        Passenger?      @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  flightSegmentId  String?
+  flightSegment    FlightSegment?  @relation(fields: [flightSegmentId], references: [id], onDelete: Cascade)
+  pnrHistoryItemId String?         @unique
+  pnrHistoryItem   PnrHistoryItem? @relation(fields: [pnrHistoryItemId], references: [id])
+}
+
+model OSIItem {
+  id               String          @id @default(cuid())
+  code             String?
+  text             String?
+  rph              String?
+  surnameRefNumber String?
+  airlineId        String?
+  airline          Company?        @relation("OSIAirline", fields: [airlineId], references: [id])
+  pnrId            String?
+  pnr              PNR?            @relation("PNRLevelOSI", fields: [pnrId], references: [id], onDelete: Cascade)
+  passengerId      String?
+  passenger        Passenger?      @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  flightSegmentId  String?
+  flightSegment    FlightSegment?  @relation(fields: [flightSegmentId], references: [id], onDelete: Cascade)
+  pnrHistoryItemId String?         @unique
+  pnrHistoryItem   PnrHistoryItem? @relation(fields: [pnrHistoryItemId], references: [id])
+}
+
+model POS {
+  id      String      @id @default(cuid())
+  pnrId   String      @unique
+  pnr     PNR         @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+  sources POSSource[]
+}
+
+model POSSource {
+  id          String    @id @default(uuid())
+  requestorId String?   @unique
+  requestor   UniqueId? @relation(fields: [requestorId], references: [id])
+  posId       String
+  pos         POS       @relation(fields: [posId], references: [id], onDelete: Cascade)
+}
+
+model ContactInformation {
+  id                 String               @id @default(cuid())
+  formattedInd       Boolean?
+  defaultInd         Boolean?
+  useType            String?
+  rph                String?
+  type               String?
+  phoneNumber        String?
+  emailAddress       String?
+  phoneType          String?
+  poBox              String?
+  streetNmbrSuffix   String?
+  streetDirection    String?
+  ruralRouteNmbr     String?
+  addressLinesRel    ContactAddressLine[]
+  bldgRoom           String?
+  cityName           String?
+  postalCode         String?
+  county             String?
+  stateProvStateCode String?
+  countryNameCode    String?
+  pnrId              String?
+  pnr                PNR?                 @relation("PNRContactInfo", fields: [pnrId], references: [id], onDelete: Cascade)
+  passengerId        String?              @unique
+  passenger          Passenger?           @relation("PassengerEmergencyContact", fields: [passengerId], references: [id], onDelete: Cascade)
+}
+
+model ContactAddressLine {
+  id            String             @id @default(cuid())
+  value         String
+  order         Int
+  contactInfoId String
+  contactInfo   ContactInformation @relation(fields: [contactInfoId], references: [id], onDelete: Cascade)
+
+  @@unique([contactInfoId, order])
+}
+
+model PrepaidBag {
+  id                    String  @id @default(cuid())
+  issuerCode            String?
+  serialNumber          String?
+  sequenceCount         Int?
+  baggagePool           String?
+  unitOfMeasureQuantity Float?
+  unitOfMeasure         String?
+  unitOfMeasureCode     String?
+  amount                Float?
+  currencyCode          String?
+  decimalPlaces         Int?
+  bagDestination        String?
+  pnrId                 String
+  pnr                   PNR     @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+}
+
+model Passenger {
+  id                      String                @id @default(cuid())
+  rph                     String?
+  surnameRefNumber        String?
+  boardingStatus          String?
+  accompaniedByInfantInd  Boolean?
+  givenName               String?
+  middleNamesRel          PassengerMiddleName[]
+  surnamePrefix           String?
+  surname                 String
+  nameTitlesRel           PassengerNameTitle[]
+  pnrId                   String
+  pnr                     PNR                   @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+  custLoyalties           CustLoyalty[]
+  osiItems                OSIItem[]
+  excessBaggages          ExcessBaggage[]
+  fareInfos               FareInfo[]
+  ssrItems                SSRItem[]
+  emergencyContact        ContactInformation?   @relation("PassengerEmergencyContact")
+  ticketDocuments         TicketDocument[]
+  docSsrs                 DocSSR[]
+  checkInBoardingNumberId String?               @unique
+  checkInBoardingNumber   BoardingNumberInfo?   @relation("CheckedInPassengerName", fields: [checkInBoardingNumberId], references: [id])
+  pnrHistoryItemId        String?               @unique
+  pnrHistoryItem          PnrHistoryItem?       @relation(fields: [pnrHistoryItemId], references: [id])
+  boardingPassRecord      BoardingPassRecord? // 乗客は1つの搭乗券記録を持つ (または持たない)
+}
+
+model PassengerMiddleName {
+  id          String    @id @default(cuid())
+  value       String
+  order       Int
+  passengerId String
+  passenger   Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+
+  @@unique([passengerId, order])
+}
+
+model PassengerNameTitle {
+  id          String    @id @default(cuid())
+  value       String
+  order       Int
+  passengerId String
+  passenger   Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+
+  @@unique([passengerId, order])
+}
+
+model CustLoyalty {
+  id           String    @id @default(cuid())
+  programID    String?
+  membershipID String?
+  loyalLevel   String?
+  vendorCode   String?
+  passengerId  String
+  passenger    Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+}
+
+model ExcessBaggage {
+  id                    String    @id @default(cuid())
+  issuerCode            String?
+  serialNumber          String?
+  sequenceCount         Int?
+  baggagePool           String?
+  unitOfMeasureQuantity Float?
+  unitOfMeasure         String?
+  unitOfMeasureCode     String?
+  passengerId           String
+  passenger             Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+}
+
+model FareInfo {
+  id                                String    @id @default(cuid())
+  ptcCode                           String?
+  discountedFareType                String?
+  discountPercent                   Float?
+  countryCode                       String?
+  discFareClassType                 String?
+  fareBasis                         String?
+  inHouseFareType                   String?
+  unstructuredFareCalcType          String?
+  unstructuredFareCalcPricingCode   String?
+  unstructuredFareCalcReportingCode String?
+  unstructuredFareCalcInfo          String?
+  passengerId                       String
+  passenger                         Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+}
+
+model TicketDocument {
+  id                       String        @id @default(cuid())
+  ticketDocumentNbr        String?
+  type                     String?
+  dateOfIssue              DateTime?
+  ticketLocation           String?
+  primaryDocInd            Boolean?
+  exchangeTktNbrInd        Boolean?
+  reasonForIssuanceCode    String?
+  reasonForIssuanceSubCode String?
+  description              String?
+  passengerId              String
+  passenger                Passenger     @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  totalFare                TotalFare?
+  pricingInfo              PriceInfo?
+  taxes                    Tax[]
+  paymentInfos             PaymentInfo[]
+}
+
+model TotalFare {
+  id               String         @id @default(cuid())
+  amount           Float
+  currencyCode     String
+  decimalPlaces    Int?
+  ticketDocumentId String         @unique
+  ticketDocument   TicketDocument @relation(fields: [ticketDocumentId], references: [id], onDelete: Cascade)
+}
+
+model PriceInfo {
+  id                    String         @id @default(cuid())
+  date                  DateTime?
+  time                  String?
+  isoCountryCode        String?
+  locationCode          String?
+  netReportingCode      String?
+  nonEndorsableInd      Boolean?
+  nonRefundableInd      Boolean?
+  penaltyRestrictionInd Boolean?
+  ticketDocumentId      String         @unique
+  ticketDocument        TicketDocument @relation(fields: [ticketDocumentId], references: [id], onDelete: Cascade)
+}
+
+model Tax {
+  id                String         @id @default(cuid())
+  qualifier         String?
+  isoCountryCode    String?
+  amount            Float
+  currencyCode      String
+  decimalPlaces     Int?
+  taxType           String?
+  filedAmount       Float?
+  filedCurrencyCode String?
+  filedTaxType      String?
+  conversionRate    Float?
+  usage             String?
+  ticketDocumentId  String
+  ticketDocument    TicketDocument @relation(fields: [ticketDocumentId], references: [id], onDelete: Cascade)
+}
+
+model PaymentInfo {
+  id               String         @id @default(cuid())
+  paymentType      String?
+  paymentUse       String?
+  paymentAmount    Float?
+  vendorCode       String?
+  accountNbr       String?
+  expiryDate       String?
+  cardHolderName   String?
+  sponsors         Sponsor[]
+  ticketDocumentId String
+  ticketDocument   TicketDocument @relation(fields: [ticketDocumentId], references: [id], onDelete: Cascade)
+}
+
+model Sponsor {
+  id               String      @id @default(cuid())
+  nameAddressPhone String
+  paymentInfoId    String
+  paymentInfo      PaymentInfo @relation(fields: [paymentInfoId], references: [id], onDelete: Cascade)
+}
+
+model DocSSR {
+  id           String          @id @default(uuid())
+  flightInfoId String?
+  flightInfo   DocFlightInfo?
+  pnrId        String?
+  pnr          PNR?            @relation("PNRDocSSR", fields: [pnrId], references: [id], onDelete: Cascade)
+  passengerId  String?         @unique
+  passenger    Passenger?      @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  historyItem  PnrHistoryItem?
+}
+
+model DocFlightInfo {
+  id        String   @id @default(uuid())
+  docSsrId  String   @unique
+  docSsr    DocSSR   @relation(fields: [docSsrId], references: [id], onDelete: Cascade)
+  airlineId String?
+  airline   Company? @relation("DocSSRAirline", fields: [airlineId], references: [id])
+}
+
+model PnrHistoryCredit {
+  id                     String               @id @default(uuid())
+  originatorId           String?              @unique
+  originator             UniqueId?            @relation(fields: [originatorId], references: [id])
+  companyId              String?
+  company                Company?             @relation("PnrHistoryCreditCompany", fields: [companyId], references: [id])
+  structuredPnrHistoryId String
+  structuredPnrHistory   StructuredPnrHistory @relation(fields: [structuredPnrHistoryId], references: [id], onDelete: Cascade)
+}
+
+model FlightSegment {
+  id                               String             @id @default(cuid())
+  departureDateTime                DateTime?
+  arrivalDateTime                  DateTime?
+  resBookDesigCode                 String?
+  numberInParty                    Int?
+  status                           String?
+  flightNumber                     String?
+  dateChangeNbr                    String?
+  departureAirportCode             String?
+  arrivalAirportCode               String?
+  operatingAirlineCode             String?
+  operatingAirlineFlightNumber     String?
+  operatingAirlineResBookDesigCode String?
+  equipmentAirEquipType            String?
+  equipmentChangeOfGauge           Boolean?
+  marketingAirlineCode             String?
+  pnrId                            String?
+  pnr                              PNR?               @relation("PNRFlights", fields: [pnrId], references: [id], onDelete: Cascade)
+  ssrItems                         SSRItem[]
+  bookingRefs                      BookingRef[]
+  osiItems                         OSIItem[]
+  checkInInfos                     CheckInInfo[]
+  pnrHistoryItemId                 String?            @unique
+  pnrHistoryItem                   PnrHistoryItem?    @relation(fields: [pnrHistoryItemId], references: [id])
+  boardingPassLegs                 FlightLegsRecord[] // このフライト区間に関連する搭乗券区間情報
+}
+
+model CheckInInfo {
+  id              String               @id @default(cuid())
+  agentID         String?
+  time            DateTime?
+  flightSegmentId String
+  flightSegment   FlightSegment        @relation(fields: [flightSegmentId], references: [id], onDelete: Cascade)
+  boardingNumbers BoardingNumberInfo[]
+}
+
+model BoardingNumberInfo {
+  id               String       @id @default(cuid())
+  number           String?
+  type             String?
+  rph              String?
+  surnameRefNumber String?
+  checkInInfoId    String
+  checkInInfo      CheckInInfo  @relation(fields: [checkInInfoId], references: [id], onDelete: Cascade)
+  passenger        Passenger?   @relation("CheckedInPassengerName")
+  seatNumber       SeatNumber?
+  checkedBags      CheckedBag[]
+}
+
+model SeatNumber {
+  id                   String             @id @default(cuid())
+  seatNumberValue      String
+  cabinClass           String?
+  boardingNumberInfoId String             @unique
+  boardingNumberInfo   BoardingNumberInfo @relation(fields: [boardingNumberInfoId], references: [id], onDelete: Cascade)
+}
+
+model CheckedBag {
+  id                    String             @id @default(cuid())
+  issuerCode            String?
+  serialNumber          String?
+  sequenceCount         Int?
+  baggagePool           String?
+  unitOfMeasureQuantity Int?
+  unitOfMeasure         String?
+  unitOfMeasureCode     String?
+  bagDestination        String?
+  boardingNumberInfoId  String
+  boardingNumberInfo    BoardingNumberInfo @relation(fields: [boardingNumberInfoId], references: [id], onDelete: Cascade)
+}
+
+model SplitPNR {
+  id              String  @id @default(cuid())
+  nbrOfPassengers Int
+  vendorCode      String?
+  pnrId           String
+  pnr             PNR     @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+}
+
+model OtherTravelSegment {
+  id                       String       @id @default(cuid())
+  serviceID                String?
+  startDate                DateTime?
+  endDate                  DateTime?
+  status                   String?
+  quantity                 Int?
+  freeText                 String?
+  bookingSource            String?
+  startLocationId          String?
+  startLocation            AirportInfo? @relation("StartLocation", fields: [startLocationId], references: [id])
+  endLocationId            String?
+  endLocation              AirportInfo? @relation("EndLocation", fields: [endLocationId], references: [id])
+  supplierCompanyShortName String?
+  supplierTravelSector     String?
+  supplierCode             String?
+  pnrId                    String
+  pnr                      PNR          @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+  hotelInfo                HotelInfo?
+  carInfo                  CarInfo?
+}
+
+model HotelInfo {
+  id                   String             @id @default(cuid())
+  roomTypeCode         String?
+  rate                 Float?
+  rateType             String?
+  hotelName            String?
+  customerName         String?
+  propertyID           String?
+  otherTravelSegmentId String             @unique
+  otherTravelSegment   OtherTravelSegment @relation(fields: [otherTravelSegmentId], references: [id], onDelete: Cascade)
+}
+
+model CarInfo {
+  id                   String             @id @default(cuid())
+  rateType             String?
+  rate                 Float?
+  ratePeriod           String?
+  otherTravelSegmentId String             @unique
+  otherTravelSegment   OtherTravelSegment @relation(fields: [otherTravelSegmentId], references: [id], onDelete: Cascade)
+}
+
+model StructuredPnrHistory {
+  id      String             @id @default(cuid())
+  pnrId   String
+  pnr     PNR                @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+  credits PnrHistoryCredit[]
+  items   PnrHistoryItem[]
+}
+
+model PnrHistoryItem {
+  id                     String               @id @default(cuid())
+  action                 String?
+  structuredPnrHistoryId String
+  structuredPnrHistory   StructuredPnrHistory @relation(fields: [structuredPnrHistoryId], references: [id], onDelete: Cascade)
+  flightInfo             FlightSegment?
+  passengerNameChange    Passenger?
+  ssrChange              SSRItem?
+  osiChange              OSIItem?
+  seatChange             SeatInfo?
+  bagChange              BagInfo?
+  docSsrChangeId         String?              @unique
+  docSsrChange           DocSSR?              @relation(fields: [docSsrChangeId], references: [id])
+}
+
+model SeatInfo {
+  id                 String         @id @default(cuid())
+  airline            String?
+  flightNumber       String?
+  status             String?
+  departureDate      DateTime?
+  serviceQuantity    Int?
+  departureAirportId String?
+  departureAirport   AirportInfo?   @relation("SeatDepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirportId   String?
+  arrivalAirport     AirportInfo?   @relation("SeatArrivalAirport", fields: [arrivalAirportId], references: [id])
+  seatNumberValue    String?
+  psgrReference      String?
+  givenName          String?
+  middleName         String?
+  surnamePrefix      String?
+  surname            String?
+  nameTitle          String?
+  pnrHistoryItemId   String         @unique
+  pnrHistoryItem     PnrHistoryItem @relation(fields: [pnrHistoryItemId], references: [id], onDelete: Cascade)
+}
+
+model BagInfo {
+  id                    String         @id @default(cuid())
+  issuerCode            String?
+  serialNumber          String?
+  sequenceCount         Int?
+  baggagePool           String?
+  unitOfMeasureQuantity Int?
+  unitOfMeasureCode     String?
+  flightNumber          String?
+  departureDate         DateTime?
+  carrierCode           String?
+  boardPoint            String?
+  offPoint              String?
+  pnrHistoryItemId      String         @unique
+  pnrHistoryItem        PnrHistoryItem @relation(fields: [pnrHistoryItemId], references: [id], onDelete: Cascade)
+}
+
+model BoardingPassRecord {
+  id    String @id @default(cuid())
+  pnrId String // PNRへの外部キー
+  pnr   PNR    @relation(fields: [pnrId], references: [id], onDelete: Cascade)
+
+  passengerId String    @unique // 特定の乗客への外部キー (1搭乗券記録は1乗客に紐づく想定)
+  passenger   Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+
+  // firstName, lastName, middleName, nameTitle は Passenger モデルから参照するため削除
+  passengerDescription         Int
+  checkInSource                String?
+  boardingPassIssuanceSource   String?
+  issuanceDate                 DateTime?
+  documentType                 String
+  boardingPassIssuerDesignator String?
+  baggageTagNumber             String?
+  firstBaggageTagNumber        String?
+  secondBaggageTagNumber       String?
+  securityDataType             String?
+  securityData                 String?
+  flightLegs                   FlightLegsRecord[]
+}
+
+model FlightLegsRecord {
+  id                   String             @id @default(cuid())
+  boardingPassRecordId String // BoardingPassRecordへの外部キー
+  boardingPassRecord   BoardingPassRecord @relation(fields: [boardingPassRecordId], references: [id], onDelete: Cascade)
+
+  flightSegmentId String // PNR内のFlightSegmentへの外部キー
+  flightSegment   FlightSegment @relation(fields: [flightSegmentId], references: [id], onDelete: Cascade)
+
+  // departurePort, arrivalPort, operatingCarrier, flightNumber, departureDate は FlightSegment モデルから参照するため削除
+  compartmentCode       String // 搭乗券固有情報として維持
+  seatNumber            String? // 搭乗券固有情報として維持
+  checkInSequenceNumber Int? // 搭乗券固有情報として維持
+  Remark                String?
+}
+
+model refreshToken {
+  id             String       @id @default(cuid())
+  token          String       @unique
+  expiresAt      DateTime
+  crewIdentityId String
+  crewIdentity   CrewIdentity @relation(fields: [crewIdentityId], references: [id])
+}

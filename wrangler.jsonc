@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flora-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-04-29",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "AEROMATE_CORE",
+      "database_id": "52618621-9086-441f-bb9e-f659b9cae1ae"
+    }
+  ]
+}

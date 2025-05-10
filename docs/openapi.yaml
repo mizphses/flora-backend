@@ -1,0 +1,144 @@
+openapi: 3.0.0
+info:
+  title: Flora 認証 API
+  description: Floraプロジェクトの認証サービスAPI仕様
+  version: 1.0.0
+servers:
+  - url: https://flora-api.mizphses.com
+    description: Flora API サーバー
+  - url: http://localhost:8787
+    description: ローカル環境
+tags:
+  - name: auth
+    description: 認証関連の操作
+paths:
+  /auth/signup:
+    post:
+      summary: 新規ユーザー登録
+      tags:
+        - auth
+      operationId: signUp
+      description: メールアドレスとパスワードを使用して新規ユーザーを登録します
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: ユーザーのメールアドレス
+                password:
+                  type: string
+                  format: password
+                  description: ユーザーのパスワード
+      responses:
+        "200":
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/login:
+    post:
+      summary: ユーザーログイン
+      tags:
+        - auth
+      operationId: login
+      description: メールアドレスとパスワードを使用してログインします
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: ユーザーのメールアドレス
+                password:
+                  type: string
+                  format: password
+                  description: ユーザーのパスワード
+      responses:
+        "200":
+          description: ログイン成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "500":
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/refresh:
+    post:
+      summary: トークンの更新
+      tags:
+        - auth
+      operationId: refreshToken
+      description: リフレッシュトークンを使用してアクセストークンを更新します
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: リフレッシュトークン
+      responses:
+        "200":
+          description: トークン更新成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: 無効なリフレッシュトークン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWTアクセストークン
+        refreshToken:
+          type: string
+          description: リフレッシュトークン
+      required:
+        - accessToken
+        - refreshToken
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: エラーメッセージ
+      required:
+        - error
